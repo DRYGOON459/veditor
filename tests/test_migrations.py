@@ -63,3 +63,5 @@ def test_alembic_migrations_create_schema(fresh_test_db: Engine) -> None:
     }
     missing = expected - tables
     assert not missing, f"Missing tables after alembic upgrade head: {missing}"
+    event_columns = {column["name"] for column in inspector.get_columns("events")}
+    assert {"start_date", "end_date"} <= event_columns

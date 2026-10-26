@@ -215,6 +215,22 @@
         {% elif current_event %}
           <span class="table-kicker">Event</span>
           <h1 class="table-title table-title-scoped" id="talks-scope-title">{{ current_event.name }}</h1>
+          {% if current_event.start_date and current_event.end_date %}
+          <span class="event-date-summary">
+            {% if current_event.start_date == current_event.end_date %}
+            {{ current_event.start_date.strftime('%b %d, %Y') }}
+            <span>(Single Day)</span>
+            {% else %}
+            {{ current_event.start_date.strftime('%b %d, %Y') }} – {{ current_event.end_date.strftime('%b %d, %Y') }}
+            <span>({{ current_event.duration_days }} day{% if current_event.duration_days != 1 %}s{% endif %})</span>
+            {% endif %}
+          </span>
+          {% elif current_event.start_date or current_event.end_date %}
+          <span class="event-date-summary">
+            {{ (current_event.start_date or current_event.end_date).strftime('%b %d, %Y') }}
+            <span>(1 day)</span>
+          </span>
+          {% endif %}
         {% else %}
         <span class="table-title">Conference Talks</span>
         {% endif %}
@@ -381,34 +397,50 @@
 
     <div class="v-modal-body">
       <p class="v-modal-desc">
-        Attach a continuous room recording from a video/livestream URL or file upload to all scheduled sessions in that room.
+        Select a room and event day, then choose a recording URL or upload a video file.
       </p>
 
       <div class="v-modal-field">
-        <label class="v-modal-label v-modal-label-tight">Select Room</label>
-        <input type="text" id="attach-room-input" list="room-options" class="input-field" placeholder="e.g. Auditorium A" value="{% if all_rooms %}{{ all_rooms[0] }}{% endif %}">
-        <datalist id="room-options">
-          {% for r in all_rooms %}
-            <option value="{{ r }}">
+        <label class="v-modal-label v-modal-label-tight" for="attach-room-input">Room</label>
+        <select id="attach-room-input" class="input-field">
+          {% if not recording_rooms %}<option value="" selected disabled>No rooms available</option>{% endif %}
+          {% for room_option in recording_rooms %}
+            <option value="{{ room_option.name }}" data-event-id="{{ room_option.event_id }}" data-day-count="{{ room_option.day_count }}" {% if loop.first %}selected{% endif %}>{{ room_option.label }}</option>
           {% endfor %}
-        </datalist>
+        </select>
       </div>
 
       <div class="v-modal-field">
-        <label class="v-modal-label v-modal-label-tight">Recording Video URL (Direct HTTP/HTTPS, Google Drive, Dropbox)</label>
-        <input type="url" id="attach-room-url" class="input-field" placeholder="https://example.com/recording.mp4 or cloud storage link">
+        <label class="v-modal-label v-modal-label-tight" for="attach-room-day">Event Day</label>
+        <select id="attach-room-day" class="input-field">
+          <option value="">Select a day</option>
+          {% for day in recording_days %}
+          <option value="{{ day.value }}" data-room="{{ day.room }}" data-event-id="{{ day.event_id }}">{{ day.label }}</option>
+          {% endfor %}
+        </select>
       </div>
 
-      <div class="v-modal-field-lg">
-        <label class="v-modal-label v-modal-label-tight">OR Upload Video File</label>
-        <input type="file" id="attach-room-file" accept="video/*" class="input-field v-modal-file-input">
+      <div class="recording-source-switch" role="tablist" aria-label="Recording source">
+        <button type="button" class="recording-source-option is-active" role="tab" aria-selected="true" data-recording-source="url">Video URL</button>
+        <button type="button" class="recording-source-option" role="tab" aria-selected="false" data-recording-source="file">Upload File</button>
+      </div>
+      <div class="v-modal-field recording-source-panel" data-recording-panel="url">
+        <label class="v-modal-label v-modal-label-tight" for="attach-room-url">Recording URL</label>
+        <input type="url" id="attach-room-url" class="input-field" placeholder="https://example.com/recording.mp4 or cloud storage link">
+      </div>
+      <div class="v-modal-field recording-source-panel" data-recording-panel="file" hidden>
+        <label class="recording-file-dropzone" for="attach-room-file">
+          <input type="file" id="attach-room-file" accept="video/*" class="recording-file-input">
+          <span class="recording-file-dropzone-title">Drop a video file here or click to browse</span>
+          <span class="recording-file-dropzone-name" id="attach-room-file-name">No file selected</span>
+        </label>
       </div>
     </div>
 
     <div class="v-modal-footer">
       <button type="button" class="btn btn-ghost btn-sm btn-close-attach-room" data-modal-close>Cancel</button>
       <button type="button" class="btn btn-primary btn-sm" id="btn-submit-attach-room">
-        Attach to All Sessions in Room
+        Attach URL Recording
       </button>
     </div>
   </div>

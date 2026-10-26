@@ -61,6 +61,90 @@
   font-size: 1.05rem;
 }
 
+.event-date-summary {
+  display: block;
+  margin-top: 5px;
+  color: var(--v-text-secondary);
+  font-size: 0.82rem;
+}
+
+.event-date-summary span {
+  color: var(--v-text-muted);
+}
+
+.recording-source-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 2px 0 14px;
+  border: 1px solid var(--v-border-subtle);
+  border-radius: var(--v-radius-md, 8px);
+  background: var(--v-bg-subtle, rgba(255, 255, 255, 0.03));
+}
+
+.recording-source-option {
+  border: 0;
+  border-radius: 5px;
+  padding: 7px 12px;
+  background: transparent;
+  color: var(--v-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.recording-source-option.is-active {
+  background: var(--v-bg-surface);
+  color: var(--v-text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.recording-source-panel[hidden] {
+  display: none;
+}
+
+.recording-file-dropzone {
+  position: relative;
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 18px;
+  border: 2px dashed var(--v-border-strong, var(--v-border));
+  border-radius: var(--v-radius-md, 8px);
+  background: var(--v-bg-subtle, rgba(255, 255, 255, 0.03));
+  color: var(--v-text-secondary);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.recording-file-dropzone:hover,
+.recording-file-dropzone.is-dragging,
+.recording-file-dropzone:focus-within {
+  border-color: var(--v-primary);
+  background: var(--v-bg-surface);
+}
+
+.recording-file-dropzone-title {
+  font-weight: 600;
+  color: var(--v-text-primary);
+}
+
+.recording-file-dropzone-name {
+  font-size: 0.8rem;
+  color: var(--v-text-muted);
+}
+
+.recording-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
 .talk-meta-link {
   color: inherit;
   text-decoration: underline dotted var(--v-border-strong);

@@ -1,7 +1,7 @@
 import json
 import re
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -2750,7 +2750,11 @@ def test_attach_room_recording_multi_talk(
 def test_attach_room_recording_with_recording_start_filter(
     client: TestClient, db_session, temp_storage, tmp_path
 ):
-    event = models.Event(name="Filter Event")
+    event = models.Event(
+        name="Filter Event",
+        start_date=date(2026, 9, 25),
+        end_date=date(2026, 9, 26),
+    )
     db_session.add(event)
     db_session.commit()
 
@@ -2776,8 +2780,17 @@ def test_attach_room_recording_with_recording_start_filter(
         end=day_start + timedelta(hours=5, minutes=30),
         status="waiting_for_files",
     )
+    talk_next_day = models.Talk(
+        event_id=event.id,
+        title="Next Day Session",
+        room="Track 1",
+        start=day_start + timedelta(days=1),
+        end=day_start + timedelta(days=1, minutes=30),
+        status="waiting_for_files",
+    )
     db_session.add(talk_morning)
     db_session.add(talk_afternoon)
+    db_session.add(talk_next_day)
     db_session.commit()
 
     clip = generate_clip(1.0, output_dir=tmp_path)
@@ -2792,6 +2805,7 @@ def test_attach_room_recording_with_recording_start_filter(
                     "room": "Track 1",
                     "event_id": str(event.id),
                     "recording_start": day_start.isoformat(),
+                    "target_date": "2026-09-25",
                 },
                 files={"file": ("morning.mp4", f_vid, "video/mp4")},
                 headers={"X-API-Key": api_key},
@@ -2803,10 +2817,61 @@ def test_attach_room_recording_with_recording_start_filter(
 
             db_session.refresh(talk_morning)
             db_session.refresh(talk_afternoon)
+            db_session.refresh(talk_next_day)
             assert talk_morning.status == "detecting"
             assert talk_afternoon.status == "waiting_for_files"
+            assert talk_next_day.status == "waiting_for_files"
     finally:
         clip.unlink(missing_ok=True)
+
+
+def test_multi_day_room_recording_requires_target_date(
+    client: TestClient, db_session, temp_storage
+):
+    event = models.Event(
+        name="Multi-day event",
+        start_date=date(2026, 9, 25),
+        end_date=date(2026, 9, 26),
+    )
+    db_session.add(event)
+    db_session.commit()
+    day_one = datetime(2026, 9, 25, 9, 0, tzinfo=UTC)
+    db_session.add_all(
+        [
+            models.Talk(
+                event_id=event.id,
+                title="Day One",
+                room="Main Hall",
+                start=day_one,
+                end=day_one + timedelta(minutes=30),
+                status="waiting_for_files",
+            ),
+            models.Talk(
+                event_id=event.id,
+                title="Day Two",
+                room="Main Hall",
+                start=day_one + timedelta(days=1),
+                end=day_one + timedelta(days=1, minutes=30),
+                status="waiting_for_files",
+            ),
+        ]
+    )
+    db_session.commit()
+
+    api_key = f"key_{uuid.uuid4().hex}"
+    db_session.add(
+        models.Client(hashed_key=hash_api_key(api_key), event_ids=[event.id])
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/talks/room/attach-recording",
+        data={"room": "Main Hall", "event_id": str(event.id)},
+        headers={"X-API-Key": api_key},
+    )
+
+    assert response.status_code == 400
+    assert "Provide target_date (YYYY-MM-DD)" in response.json()["detail"]
 
 
 def test_attach_room_recording_no_waiting_talks_conflict(

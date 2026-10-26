@@ -52,6 +52,8 @@ def create_event(
     created_by = user.user_id if not user.is_machine else None
     event = models.Event(
         name=payload.name,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
         source=payload.source,
         external_id=payload.external_id,
         retention_overrides=payload.retention_overrides,
@@ -114,6 +116,24 @@ def update_event(
             detail="SSO sessions are not permitted to modify events",
         )
     event = check_event_access(event_id, user, db)
+
+    start_date = (
+        payload.start_date
+        if "start_date" in payload.model_fields_set
+        else event.start_date
+    )
+    end_date = (
+        payload.end_date if "end_date" in payload.model_fields_set else event.end_date
+    )
+    try:
+        schemas.validate_event_date_range(start_date, end_date)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
+    event.start_date = start_date
+    event.end_date = end_date
 
     if payload.name is not None:
         clean_name = payload.name.strip()

@@ -14,12 +14,18 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-event-id');
       const name = btn.getAttribute('data-event-name');
+      const startDate = btn.getAttribute('data-event-start-date') || '';
+      const endDate = btn.getAttribute('data-event-end-date') || '';
       const expireHours = btn.getAttribute('data-event-expire-hours') || '';
       const editExpire = document.getElementById('edit-event-review-window');
+      const editStartDate = document.getElementById('edit-event-start-date');
+      const editEndDate = document.getElementById('edit-event-end-date');
       if (editForm && editInput) {
         editForm.action = `/studio/events/${id}/edit`;
         editInput.value = name || '';
       }
+      if (editStartDate) editStartDate.value = startDate;
+      if (editEndDate) editEndDate.value = endDate;
       if (editExpire) {
         if (expireHours && !editExpire.querySelector(`option[value="${expireHours}"]`)) {
           const opt = document.createElement('option');

@@ -35,6 +35,14 @@
           required
         >
       </div>
+      <div class="event-create-field event-date-field">
+        <label for="event-start-date" class="event-create-label">Start Date</label>
+        <input type="date" id="event-start-date" name="start_date" class="input-field">
+      </div>
+      <div class="event-create-field event-date-field">
+        <label for="event-end-date" class="event-create-label">End Date</label>
+        <input type="date" id="event-end-date" name="end_date" class="input-field">
+      </div>
       <div class="event-create-field">
         <label for="event-review-window" class="event-create-label">Speaker Review Window</label>
         <select
@@ -71,6 +79,7 @@
         <tr>
           <th class="col-id">ID</th>
           <th>Event Name</th>
+          <th>Dates / Duration</th>
           <th>Created By / Owner</th>
           <th>Speaker Review Window</th>
           <th class="col-actions-right">Actions</th>
@@ -84,6 +93,22 @@
             <a href="/studio?event_id={{ event.id }}" class="event-title-link">
               <strong>{{ event.name }}</strong>
             </a>
+          </td>
+          <td>
+            {% if event.start_date and event.end_date %}
+              {% if event.start_date == event.end_date %}
+                {{ event.start_date.strftime('%b %d, %Y') }}
+                <span class="text-muted">(Single Day)</span>
+              {% else %}
+              {{ event.start_date.strftime('%b %d, %Y') }} – {{ event.end_date.strftime('%b %d, %Y') }}
+              <span class="text-muted">({{ event.duration_days }} day{% if event.duration_days != 1 %}s{% endif %})</span>
+              {% endif %}
+            {% elif event.start_date or event.end_date %}
+              {{ (event.start_date or event.end_date).strftime('%b %d, %Y') }}
+              <span class="text-muted">(1 day)</span>
+            {% else %}
+              <span class="text-muted">Single Day (dates not set)</span>
+            {% endif %}
           </td>
           <td>
             {% if event.created_by_user %}
@@ -109,7 +134,7 @@
               <button type="button" class="btn btn-ghost btn-sm btn-api-keys" data-event-id="{{ event.id }}" data-event-name="{{ event.name }}" title="Manage API Keys">
                 API Keys
               </button>
-              <button type="button" class="btn btn-ghost btn-sm btn-edit-event" data-event-id="{{ event.id }}" data-event-name="{{ event.name }}" data-event-expire-hours="{{ event.speaker_magic_link_expire_hours or '' }}" title="Edit Event">
+              <button type="button" class="btn btn-ghost btn-sm btn-edit-event" data-event-id="{{ event.id }}" data-event-name="{{ event.name }}" data-event-start-date="{{ event.start_date.isoformat() if event.start_date else '' }}" data-event-end-date="{{ event.end_date.isoformat() if event.end_date else '' }}" data-event-expire-hours="{{ event.speaker_magic_link_expire_hours or '' }}" title="Edit Event">
                 Edit
               </button>
               <button type="button" class="btn btn-ghost btn-sm btn-delete-event btn-danger-ghost" data-event-id="{{ event.id }}" data-event-name="{{ event.name }}" title="Delete Event">
@@ -144,6 +169,16 @@
         <div class="v-modal-field">
           <label for="edit-event-name" class="event-create-label">Event Name</label>
           <input type="text" id="edit-event-name" name="name" class="input-field" required>
+        </div>
+        <div class="event-date-grid">
+          <div class="v-modal-field">
+            <label for="edit-event-start-date" class="event-create-label">Start Date</label>
+            <input type="date" id="edit-event-start-date" name="start_date" class="input-field">
+          </div>
+          <div class="v-modal-field">
+            <label for="edit-event-end-date" class="event-create-label">End Date</label>
+            <input type="date" id="edit-event-end-date" name="end_date" class="input-field">
+          </div>
         </div>
       </div>
       <div class="events-modal-field">

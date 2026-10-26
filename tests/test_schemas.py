@@ -1,8 +1,64 @@
 """Unit tests for schema-layer helpers and Pydantic models in app.schemas."""
 
+from datetime import date
+
 import pytest
 
-from app.schemas import CutBoundsRequest, _parse_hhmmss
+from app.schemas import (
+    CutBoundsRequest,
+    EventCreate,
+    EventRead,
+    EventUpdate,
+    _parse_hhmmss,
+)
+
+
+def test_event_dates_and_inclusive_duration():
+    event = EventCreate(
+        name="Conference",
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 3),
+    )
+    assert event.start_date == date(2026, 10, 1)
+    assert event.end_date == date(2026, 10, 3)
+    assert EventRead(
+        id=1,
+        name=event.name,
+        start_date=event.start_date,
+        end_date=event.end_date,
+    ).duration_days == 3
+    assert EventRead(id=2, name="Undated").duration_days == 1
+
+
+def test_event_date_range_allows_partial_dates():
+    event = EventCreate(name="Partially dated", start_date=date(2026, 10, 1))
+    assert event.start_date == date(2026, 10, 1)
+    assert EventRead(
+        id=3, name=event.name, start_date=event.start_date
+    ).duration_days == 1
+    assert EventUpdate(end_date=date(2026, 10, 3)).end_date == date(2026, 10, 3)
+
+
+@pytest.mark.parametrize(
+    "schema,data",
+    [
+        (
+            EventCreate,
+            {
+                "name": "Conference",
+                "start_date": "2026-10-03",
+                "end_date": "2026-10-02",
+            },
+        ),
+        (
+            EventUpdate,
+            {"start_date": "2026-10-03", "end_date": "2026-10-02"},
+        ),
+    ],
+)
+def test_invalid_event_date_ranges_are_rejected(schema, data):
+    with pytest.raises(ValueError, match="date"):
+        schema(**data)
 
 
 @pytest.mark.parametrize(

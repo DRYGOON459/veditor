@@ -164,17 +164,27 @@ def test_post_events_success_organizer(mock_db):
         user_id=5, email="organizer@example.com", role="organizer", source="jwt"
     )
 
-    res = client.post("/events", json={"name": "PyCon 2026"})
+    res = client.post(
+        "/events",
+        json={
+            "name": "PyCon 2026",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-03",
+        },
+    )
     assert res.status_code == 201
     data = res.json()
     assert data["id"] == 100
     assert data["name"] == "PyCon 2026"
     assert data["created_by_user_id"] == 5
+    assert data["duration_days"] == 3
 
     assert mock_db.add.called
     created_event = mock_db.add.call_args[0][0]
     assert created_event.created_by_user_id == 5
     assert created_event.name == "PyCon 2026"
+    assert created_event.start_date.isoformat() == "2026-10-01"
+    assert created_event.end_date.isoformat() == "2026-10-03"
 
 
 def test_post_events_machine_client_sets_created_by_none(mock_db):
@@ -1310,6 +1320,15 @@ def test_event_create_and_patch_speaker_magic_link_expire_hours(mock_db):
     )
     assert response.status_code == 200
     assert mock_event.speaker_magic_link_expire_hours == 336
+
+    date_response = client.patch(
+        "/events/99",
+        json={"start_date": "2026-10-01", "end_date": "2026-10-03"},
+    )
+    assert date_response.status_code == 200
+    assert date_response.json()["duration_days"] == 3
+    assert mock_event.start_date.isoformat() == "2026-10-01"
+    assert mock_event.end_date.isoformat() == "2026-10-03"
 
     # Boolean values must be rejected (StrictPositiveInt)
     res_bool_patch = client.patch(

@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Annotated, Any, Literal
@@ -21,10 +21,17 @@ StrictPositiveInt = Annotated[int, Field(strict=True, gt=0)]
 
 class EventBase(BaseModel):
     name: str
+    start_date: date | None = None
+    end_date: date | None = None
     source: str | None = None
     external_id: str | None = None
     retention_overrides: dict[str, Any] | None = None
     speaker_magic_link_expire_hours: StrictPositiveInt | None = None
+
+    @model_validator(mode="after")
+    def _validate_event_dates(self):
+        validate_event_date_range(self.start_date, self.end_date)
+        return self
 
     @field_validator("retention_overrides")
     @classmethod
@@ -40,6 +47,8 @@ class EventCreate(EventBase):
 
 class EventUpdate(BaseModel):
     name: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     source: str | None = None
     external_id: str | None = None
     retention_overrides: dict[str, Any] | None = None
@@ -52,11 +61,31 @@ class EventUpdate(BaseModel):
     ) -> dict[str, Any] | None:
         return validate_retention_overrides(v)
 
+    @model_validator(mode="after")
+    def _validate_event_dates(self):
+        if self.start_date is not None and self.end_date is not None:
+            validate_event_date_range(self.start_date, self.end_date)
+        return self
+
 
 class EventRead(EventBase):
     id: int
     created_by_user_id: int | None = None
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def duration_days(self) -> int:
+        if self.start_date is None or self.end_date is None:
+            return 1
+        return max(1, (self.end_date - self.start_date).days + 1)
+
+
+def validate_event_date_range(
+    start_date: date | None, end_date: date | None
+) -> None:
+    if start_date is not None and end_date is not None and end_date < start_date:
+        raise ValueError("Event end date must be on or after the start date")
 
 
 class ClientBase(BaseModel):

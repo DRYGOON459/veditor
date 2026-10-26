@@ -4,7 +4,7 @@ import math
 import shutil
 import traceback
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
 from typing import Annotated
@@ -1829,6 +1829,7 @@ async def attach_room_recording(
     relative_key: Annotated[str | None, Form()] = None,
     source_path: Annotated[str | None, Form()] = None,
     recording_start: Annotated[datetime | None, Form()] = None,
+    target_date: Annotated[date | None, Form()] = None,
 ):
     """Attach a continuous room recording to all scheduled sessions in that room."""
     # Support JSON requests as well as multipart/form-data
@@ -1842,6 +1843,15 @@ async def attach_room_recording(
                 video_url = body.get("video_url", video_url)
                 relative_key = body.get("relative_key", relative_key)
                 source_path = body.get("source_path", source_path)
+                target_date_value = body.get("target_date")
+                if target_date_value:
+                    try:
+                        target_date = date.fromisoformat(target_date_value)
+                    except (TypeError, ValueError) as exc:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="target_date must be a valid ISO date (YYYY-MM-DD)",
+                        ) from exc
                 rec_start_str = body.get("recording_start")
                 if rec_start_str and not recording_start:
                     try:
@@ -1895,10 +1905,26 @@ async def attach_room_recording(
         .order_by(models.Talk.start)
         .all()
     )
+    available_dates = {talk.start.date() for talk in all_room_talks}
+    if len(available_dates) > 1 and target_date is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Room '{room}' has talks on multiple dates. Provide target_date "
+                "(YYYY-MM-DD) to select the day for this room recording."
+            ),
+        )
+    if target_date is not None:
+        all_room_talks = [
+            talk for talk in all_room_talks if talk.start.date() == target_date
+        ]
     if not all_room_talks:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No talks found in room '{room}' for event {event_id}",
+            detail=(
+                f"No talks found in room '{room}' for event {event_id}"
+                + (f" on {target_date.isoformat()}" if target_date else "")
+            ),
         )
 
     eligible_talks = [

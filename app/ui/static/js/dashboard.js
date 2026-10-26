@@ -148,8 +148,75 @@ window.closeImportModal = function() {
 
 window.openAttachRoomModal = function() {
   const m = document.getElementById('modal-attach-room');
-  if (m) Modal.open(m);
+  if (m) {
+    m.dataset.source = 'url';
+    updateAttachRoomTarget();
+    setAttachRoomSource('url');
+    Modal.open(m);
+  }
 };
+
+function updateAttachRoomTarget() {
+  const roomSelect = document.getElementById('attach-room-input');
+  const daySelect = document.getElementById('attach-room-day');
+  if (!roomSelect || !daySelect) return;
+
+  const selectedRoom = roomSelect.selectedOptions[0];
+  const matchingDays = [...daySelect.options].filter((option) =>
+    option.value &&
+    selectedRoom &&
+    option.dataset.room === selectedRoom.value &&
+    option.dataset.eventId === selectedRoom.dataset.eventId
+  );
+  [...daySelect.options].forEach((option) => {
+    if (option.value) option.hidden = !matchingDays.includes(option);
+  });
+
+  const isMultiDay = matchingDays.length > 1;
+  daySelect.required = isMultiDay;
+  if (matchingDays.length === 1) {
+    daySelect.value = matchingDays[0].value;
+  } else if (!matchingDays.some((option) => option.value === daySelect.value)) {
+    daySelect.value = '';
+  }
+
+  setAttachRoomSubmitLabel();
+}
+
+function setAttachRoomSubmitLabel() {
+  const modal = document.getElementById('modal-attach-room');
+  const submit = document.getElementById('btn-submit-attach-room');
+  const roomSelect = document.getElementById('attach-room-input');
+  const daySelect = document.getElementById('attach-room-day');
+  if (!submit) return;
+  const source = modal && modal.dataset.source === 'file' ? 'File' : 'URL';
+  const roomName = roomSelect && roomSelect.selectedOptions[0]
+    ? roomSelect.selectedOptions[0].textContent.trim()
+    : '';
+  const dayOption = daySelect && daySelect.selectedOptions[0];
+  const dayLabel = dayOption && dayOption.value
+    ? dayOption.textContent.split(':')[0]
+    : '';
+  const target = [dayLabel, roomName].filter(Boolean).join(' — ');
+  submit.textContent = target
+    ? `Attach ${source} to ${target} Sessions`
+    : `Attach ${source} Recording`;
+}
+
+function setAttachRoomSource(source) {
+  const modal = document.getElementById('modal-attach-room');
+  if (!modal) return;
+  modal.dataset.source = source;
+  document.querySelectorAll('[data-recording-source]').forEach((button) => {
+    const selected = button.dataset.recordingSource === source;
+    button.classList.toggle('is-active', selected);
+    button.setAttribute('aria-selected', selected ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-recording-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.recordingPanel !== source;
+  });
+  setAttachRoomSubmitLabel();
+}
 
 window.closeAttachRoomModal = function() {
   const m = document.getElementById('modal-attach-room');
@@ -157,24 +224,29 @@ window.closeAttachRoomModal = function() {
 };
 
 window.submitAttachRoomRecording = async function() {
-  const roomInput = (document.getElementById('attach-room-input') || {}).value || '';
+  const modal = document.getElementById('modal-attach-room');
+  const roomSelect = document.getElementById('attach-room-input');
+  const selectedRoom = roomSelect && roomSelect.selectedOptions[0];
+  const roomInput = selectedRoom ? selectedRoom.value : '';
   const urlInput = (document.getElementById('attach-room-url') || {}).value || '';
+  const dayInput = document.getElementById('attach-room-day');
   const fileInput = document.getElementById('attach-room-file');
   const btn = document.getElementById('btn-submit-attach-room');
+  const source = modal && modal.dataset.source === 'file' ? 'file' : 'url';
 
   if (!roomInput.trim()) {
-    await Modal.alert({ title: 'Validation Error', message: 'Please enter or select a room name.' });
+    await Modal.alert({ title: 'Validation Error', message: 'Please select a room.' });
     return;
   }
-  const hasFile = fileInput && fileInput.files && fileInput.files[0];
-  const hasUrl = urlInput.trim().length > 0;
+  if (dayInput && dayInput.required && !dayInput.value) {
+    await Modal.alert({ title: 'Validation Error', message: 'Please select the event day for this multi-day room recording.' });
+    return;
+  }
+  const hasFile = source === 'file' && fileInput && fileInput.files && fileInput.files[0];
+  const hasUrl = source === 'url' && urlInput.trim().length > 0;
 
   if (!hasFile && !hasUrl) {
-    await Modal.alert({ title: 'Validation Error', message: 'Please provide a video URL or select a video recording file.' });
-    return;
-  }
-  if (hasFile && hasUrl) {
-    await Modal.alert({ title: 'Validation Error', message: 'Please provide either a video URL or a file upload, not both.' });
+    await Modal.alert({ title: 'Validation Error', message: source === 'url' ? 'Please enter a video URL.' : 'Please select a video recording file.' });
     return;
   }
 
@@ -182,17 +254,19 @@ window.submitAttachRoomRecording = async function() {
 
   try {
     const fd = new FormData();
-    fd.append('room', roomInput.trim());
+    fd.append('room', roomInput);
     if (hasUrl) {
       fd.append('video_url', urlInput.trim());
-    } else {
+    } else if (hasFile) {
       fd.append('file', fileInput.files[0]);
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const eventIdParam = urlParams.get('event_id');
+    const eventIdParam = selectedRoom && selectedRoom.dataset.eventId;
     if (eventIdParam) {
       fd.append('event_id', eventIdParam);
+    }
+    if (dayInput && dayInput.value) {
+      fd.append('target_date', dayInput.value);
     }
 
     const res = await (window.authFetch || fetch)('/talks/room/attach-recording', {
@@ -206,7 +280,7 @@ window.submitAttachRoomRecording = async function() {
     }
 
     const data = await res.json();
-    await Modal.alert({ title: 'Attachment Successful', message: `Successfully attached video to ${data.attached_count} session(s) in "${data.room}"!` });
+    await Modal.alert({ title: 'Attachment Successful', message: `Successfully attached video to ${data.attached_count} session(s) in "${data.room}"${dayInput && dayInput.value ? ` on ${dayInput.value}` : ''}!` });
     location.reload();
   } catch (err) {
     await Modal.alert({ title: 'Attachment Failed', message: `Attachment failed: ${err.message}`, variant: 'danger' });
@@ -214,6 +288,15 @@ window.submitAttachRoomRecording = async function() {
     setBtnBusy(btn, false);
   }
 };
+
+const attachRoomSelect = document.getElementById('attach-room-input');
+const attachRoomDay = document.getElementById('attach-room-day');
+if (attachRoomSelect) {
+  attachRoomSelect.addEventListener('change', updateAttachRoomTarget);
+}
+if (attachRoomDay) {
+  attachRoomDay.addEventListener('change', setAttachRoomSubmitLabel);
+}
 
 window.openQuickTalkModal = function() {
   const m = document.getElementById('modal-quick-talk');
@@ -587,6 +670,48 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.btn-close-attach-room').forEach((b) => {
     b.addEventListener('click', window.closeAttachRoomModal);
   });
+  document.querySelectorAll('[data-recording-source]').forEach((button) => {
+    button.addEventListener('click', () => setAttachRoomSource(button.dataset.recordingSource));
+  });
+  const attachDay = document.getElementById('attach-room-day');
+  if (attachDay) {
+    attachDay.addEventListener('change', () => {
+      setAttachRoomSource(document.getElementById('modal-attach-room')?.dataset.source || 'url');
+    });
+  }
+  const attachFile = document.getElementById('attach-room-file');
+  if (attachFile) {
+    attachFile.addEventListener('change', () => {
+      if (attachFile.files && attachFile.files.length) {
+        const fileName = document.getElementById('attach-room-file-name');
+        if (fileName) fileName.textContent = attachFile.files[0].name;
+        setAttachRoomSource('file');
+      }
+    });
+  }
+  const fileDropzone = document.querySelector('.recording-file-dropzone');
+  if (attachFile && fileDropzone) {
+    ['dragenter', 'dragover'].forEach((eventName) => {
+      fileDropzone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        fileDropzone.classList.add('is-dragging');
+      });
+    });
+    ['dragleave', 'drop'].forEach((eventName) => {
+      fileDropzone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        fileDropzone.classList.remove('is-dragging');
+      });
+    });
+    fileDropzone.addEventListener('drop', (event) => {
+      const files = event.dataTransfer && event.dataTransfer.files;
+      if (!files || !files.length) return;
+      attachFile.files = files;
+      const fileName = document.getElementById('attach-room-file-name');
+      if (fileName) fileName.textContent = files[0].name;
+      setAttachRoomSource('file');
+    });
+  }
   document.querySelectorAll('.btn-close-quick-talk').forEach((b) => {
     b.addEventListener('click', window.closeQuickTalkModal);
   });

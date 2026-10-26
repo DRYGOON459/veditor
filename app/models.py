@@ -1,9 +1,10 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any, Self
 
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -133,6 +134,8 @@ class Event(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     source: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     retention_overrides: Mapped[dict[str, Any] | None] = mapped_column(
@@ -154,6 +157,12 @@ class Event(Base):
         back_populates="event", cascade="all, delete-orphan"
     )
     created_by_user: Mapped[User | None] = relationship(back_populates="events")
+
+    @property
+    def duration_days(self) -> int:
+        if self.start_date is None or self.end_date is None:
+            return 1
+        return max(1, (self.end_date - self.start_date).days + 1)
 
     @validates("retention_overrides")
     def _validate_retention_overrides(self, key: str, value: Any) -> Any:

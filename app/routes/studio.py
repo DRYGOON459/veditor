@@ -1,6 +1,6 @@
 import logging
 import urllib.parse
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -535,14 +535,6 @@ def _render_talks_page(
         q_lower = q.lower()
         talks = [t for t in talks if q_lower in t.title.lower()]
 
-    all_rooms = [
-        r
-        for (r,) in db.query(models.Talk.room)
-        .filter(scope, models.Talk.room.isnot(None), models.Talk.room != "")
-        .distinct()
-        .order_by(models.Talk.room)
-    ]
-
     stats_scope = scope if room is None else and_(scope, models.Talk.room == room)
     status_counts: dict[str, int] = dict(
         db.query(models.Talk.status, func.count(models.Talk.id))
@@ -551,6 +543,78 @@ def _render_talks_page(
         .all()
     )
     current_event = next((e for e in user_events if e.id == event_id), None)
+    room_day_rows = (
+        db.query(
+            models.Talk.room,
+            models.Talk.event_id,
+            models.Talk.start,
+            models.Event.name,
+            models.Event.start_date,
+        )
+        .join(models.Event, models.Event.id == models.Talk.event_id)
+        .filter(scope, models.Talk.room.isnot(None), models.Talk.room != "")
+        .all()
+    )
+    event_names = {}
+    event_start_dates = {}
+    room_event_days: dict[tuple[str, int], dict[date, int]] = {}
+    for (
+        room_name,
+        room_event_id,
+        talk_start,
+        event_name,
+        event_start_date,
+    ) in room_day_rows:
+        event_names[room_event_id] = event_name
+        event_start_dates[room_event_id] = event_start_date
+        days = room_event_days.setdefault((room_name, room_event_id), {})
+        talk_date = talk_start.date()
+        days[talk_date] = days.get(talk_date, 0) + 1
+    room_groups_by_name: dict[str, int] = {}
+    for room_name, _room_event_id in room_event_days:
+        room_groups_by_name[room_name] = room_groups_by_name.get(room_name, 0) + 1
+
+    recording_rooms = []
+    recording_days = []
+    for (room_name, room_event_id), days in sorted(
+        room_event_days.items(),
+        key=lambda item: (
+            item[0][0].lower(),
+            event_names.get(item[0][1], "").lower(),
+        ),
+    ):
+        recording_rooms.append(
+            {
+                "name": room_name,
+                "event_id": room_event_id,
+                "label": (
+                    f"{room_name} — {event_names.get(room_event_id, 'Event')}"
+                    if room_groups_by_name[room_name] > 1
+                    else room_name
+                ),
+                "day_count": len(days),
+            }
+        )
+        for available_day_number, (talk_date, session_count) in enumerate(
+            sorted(days.items()), start=1
+        ):
+            event_start_date = event_start_dates.get(room_event_id)
+            day_number = (
+                max(1, (talk_date - event_start_date).days + 1)
+                if event_start_date
+                else available_day_number
+            )
+            recording_days.append(
+                {
+                    "room": room_name,
+                    "event_id": room_event_id,
+                    "value": talk_date.isoformat(),
+                    "label": (
+                        f"Day {day_number}: {talk_date.strftime('%b %d, %Y')} "
+                        f"({session_count} sessions)"
+                    ),
+                }
+            )
 
     stats = {
         "total": sum(status_counts.values()),
@@ -573,7 +637,8 @@ def _render_talks_page(
             "talks": talks,
             "stats": stats,
             "all_statuses": ALL_STATUSES,
-            "all_rooms": all_rooms,
+            "recording_rooms": recording_rooms,
+            "recording_days": recording_days,
             "q": q or "",
             "status_filter": status_filter or "",
             "event_id": event_id,
@@ -1072,6 +1137,8 @@ def create_studio_event(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
     name: Annotated[str, Form()] = "",
+    start_date: Annotated[date | None, Form()] = None,
+    end_date: Annotated[date | None, Form()] = None,
     speaker_magic_link_expire_hours: Annotated[str, Form()] = "",
 ):
     cookie_token = request.cookies.get("veditor_session")
@@ -1102,6 +1169,17 @@ def create_studio_event(
         )
 
     try:
+        schemas.validate_event_date_range(start_date, end_date)
+    except ValueError as exc:
+        return _render_studio_events_page(
+            request,
+            user,
+            db,
+            error=str(exc),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
         parsed_hours = _parse_speaker_review_window_hours(
             speaker_magic_link_expire_hours
         )
@@ -1116,6 +1194,8 @@ def create_studio_event(
 
     event = models.Event(
         name=clean_name,
+        start_date=start_date,
+        end_date=end_date,
         speaker_magic_link_expire_hours=parsed_hours,
         created_by_user_id=user.id,
     )
@@ -1135,6 +1215,8 @@ def edit_studio_event(
     event_id: int,
     db: Annotated[Session, Depends(get_db)],
     name: Annotated[str, Form()] = "",
+    start_date: Annotated[date | None, Form()] = None,
+    end_date: Annotated[date | None, Form()] = None,
     speaker_magic_link_expire_hours: Annotated[str, Form()] = "",
 ):
     cookie_token = request.cookies.get("veditor_session")
@@ -1173,7 +1255,16 @@ def edit_studio_event(
             detail="Event name cannot be empty",
         )
 
+    try:
+        schemas.validate_event_date_range(start_date, end_date)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+
     event.name = clean_name
+    event.start_date = start_date
+    event.end_date = end_date
     if speaker_magic_link_expire_hours is not None:
         try:
             event.speaker_magic_link_expire_hours = _parse_speaker_review_window_hours(

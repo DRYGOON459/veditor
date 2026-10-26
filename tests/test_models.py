@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import create_engine
@@ -62,6 +62,24 @@ def test_create_event_and_talk_relationships(db_session):
     assert len(talk.reviews) == 1
     assert talk.reviews[0] == review
     assert review.created_at is not None
+
+
+def test_event_duration_days_is_inclusive():
+    one_day = Event(
+        name="One day",
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 1),
+    )
+    multi_day = Event(
+        name="Multi day",
+        start_date=date(2026, 10, 1),
+        end_date=date(2026, 10, 3),
+    )
+    undated = Event(name="Undated")
+
+    assert one_day.duration_days == 1
+    assert multi_day.duration_days == 3
+    assert undated.duration_days == 1
 
 
 def test_required_fields_enforced(db_session):
